@@ -1,0 +1,208 @@
+# 🚨 Violence Prediction for CCTV Surveillance Systems
+
+> A deep learning model that automatically detects violent activity from CCTV footage using a **frozen ResNet-18 CNN + LSTM** architecture for temporal video understanding. Trained and evaluated on Kaggle with 2× GPU.
+
+![Python](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C?logo=pytorch)
+![Platform](https://img.shields.io/badge/Platform-Kaggle-20BEFF?logo=kaggle)
+![License](https://img.shields.io/badge/License-MIT-green)
+![Status](https://img.shields.io/badge/Status-Academic%20Project-orange)
+
+---
+
+## 📌 Problem Statement
+
+Manual monitoring of CCTV cameras is inefficient and error-prone — human operators miss critical incidents across large-scale infrastructure (1B+ cameras globally, ~60% incidents missed). This project automates real-time violence detection using deep learning on video frame sequences.
+
+---
+
+## 🧠 Model Architecture
+
+```
+Input Video Clip  →  16 frames sampled  →  (B × 16 × 3 × 224 × 224)
+                              ↓
+              ResNet-18 (Frozen — pretrained ImageNet weights)
+                    512-d spatial feature per frame
+                              ↓
+                   LSTM (128 hidden units, batch_first)
+                    Temporal sequence modelling
+                              ↓
+                         Dropout (p=0.5)
+                              ↓
+                     FC Layer  (128 → 1)
+                              ↓
+              BCEWithLogitsLoss + class-weighted sigmoid
+                              ↓
+                  Violence (1) / Non-Violence (0)
+```
+
+**Key design decisions:**
+- ResNet-18 CNN is **fully frozen** — only LSTM + FC layers are trained
+- `GroupShuffleSplit` on `video_id` prevents any frame from the same video appearing in both train and val
+- `pos_weight = n_neg / n_pos` handles class imbalance in loss
+- `ReduceLROnPlateau` scheduler (patience=3, factor=0.5) adapts learning rate on val accuracy
+- Separate `transform_train` (flip + color jitter) and `transform_val` (clean resize only)
+
+---
+
+## 📁 Project Structure
+
+```
+violence-prediction/
+│
+├── Violence_Model.ipynb        # Complete notebook: EDA, training, evaluation & results
+├── requirements.txt            # Python dependencies
+├── .gitignore                  # Files excluded from version control
+├── README.md                   # Project documentation
+│
+│
+└── Results/  # ⚠️ Not tracked — generated at runtime
+    └── best_model_arnav_new.pth
+    |__Confusion matrix..
+
+```
+
+---
+
+## 📊 Dataset
+
+| Split | Source | Videos | Windows (16-frame) | Label |
+|---|---|---|---|---|
+| Violence | UCF Crime (CCTV — fights, assault, robbery) | 23 | 2,958 | 1 |
+| Non-Violence | RWF-2000 (real surveillance footage) | 50 | 3,027 | 0 |
+| **Total** | | **73** | **5,985** | — |
+
+- **Train / Val split:** `GroupShuffleSplit` (80% / 20%) → **60 train videos / 15 val videos**
+- **Train windows:** ~4,889 &nbsp;|&nbsp; **Val windows:** ~1,096
+- **No data leakage:** video-level grouping ensures zero overlap ✅
+- **Frame size:** 224 × 224, normalized with ImageNet mean/std
+- **Dataset on Kaggle:** [`idkabtit/violencepredictiondataset`](https://www.kaggle.com/datasets/idkabtit/violencepredictiondataset)
+
+---
+
+## ⚙️ ML Pipeline
+
+| Step | Detail |
+|---|---|
+| **Data Loading** | Two CSVs (violence + non-violence), merged & shuffled; `frame_paths` parsed from pipe-separated or `ast.literal_eval` format |
+| **Group Split** | `GroupShuffleSplit` on `video_id` — zero frame leakage between splits |
+| **Augmentation** | Train: `RandomHorizontalFlip` + `ColorJitter(b=0.3, c=0.3, s=0.2)` · Val: clean resize only |
+| **Feature Extraction** | Frozen ResNet-18 — 512-d vector per frame; `(B×T, C, H, W)` batch reshape |
+| **Sequence Modelling** | `nn.LSTM(512, 128, batch_first=True)` — last hidden state `h_T` |
+| **Prediction Head** | `Dropout(0.5)` → `FC(128→1)` → `BCEWithLogitsLoss` with `pos_weight` |
+| **Optimiser** | `Adam` (LR = 1e-4, trainable params: LSTM + FC only) |
+| **Scheduler** | `ReduceLROnPlateau(mode='max', patience=3, factor=0.5)` on val accuracy |
+
+---
+
+## 📈 Training Results
+
+### Final Run — 25 Epochs (Frozen CNN, LR=1e-4, 2× GPU)
+
+| Epoch | Train Loss | Val Acc | F1 |
+|---|---|---|---|
+| 1 | 142.86 | 59.49% | 0.094 |
+| 2 | 86.00 | **60.86%** ← best | 0.161 |
+| 5 | 45.81 | 59.03% | 0.107 |
+| 10 | 25.58 | 57.30% | 0.124 |
+| 15 | 18.51 | 55.20% | 0.155 |
+| 22 | 15.25 | 50.55% | 0.316 |
+| 25 | 16.26 | 54.20% | 0.190 |
+
+**Best Validation Accuracy: 60.86%** (saved at Epoch 2)
+
+> Training loss drops steadily from ~143 → ~16, but val accuracy plateaus early — consistent with a small dataset and a fully frozen feature extractor.
+
+### Sanity Run (20 samples, 3 batches)
+```
+Batch 0 | Loss: 0.6020
+Batch 1 | Loss: 0.6532
+Batch 2 | Loss: 0.9067
+✅ SANITY RUN COMPLETE
+```
+
+---
+
+## 🚀 Getting Started
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/<your-username>/violence-prediction.git
+cd violence-prediction
+```
+
+### 2. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Download the dataset
+
+```bash
+kaggle datasets download -d idkabtit/violencepredictiondataset
+unzip violencepredictiondataset.zip -d data/
+```
+
+Or add the dataset directly in your Kaggle notebook environment.
+
+### 4. Update paths and run the notebook
+
+Open `Violence_Model.ipynb`. If running **locally**, update the `ROOT` path in the config block:
+
+```python
+# Change this:
+ROOT = "/kaggle/input/datasets/idkabtit/violencepredictiondataset/kaggleDataset"
+# To your local path:
+ROOT = "data/kaggleDataset"
+```
+
+Then run all cells top to bottom.
+
+---
+
+## 🔧 Environment
+
+Trained on **Kaggle** with:
+- 2× GPU (CUDA, `nn.DataParallel`)
+- Python 3.10
+- PyTorch 2.x + torchvision
+
+For local runs, a single GPU (or CPU with `BATCH_SIZE=2`) works fine for evaluation.
+
+---
+
+## ⚠️ Limitations
+
+- **Early plateauing:** Val accuracy stalls at ~61% from Epoch 2 despite loss continuing to drop — the frozen CNN produces domain-agnostic features that limit LSTM learning.
+- **Low F1:** F1 stays in the 0.09–0.32 range, suggesting the model biases toward the majority class on the larger val set.
+- **No real-time inference:** Pipeline processes pre-extracted frames in batches — not optimised for live streams or edge devices.
+- **Single modality:** Visual frames only — no audio features.
+
+---
+
+## 🔭 Future Work
+
+- 🔓 **Unfreeze CNN layers** — Fine-tune ResNet-18 end-to-end with a lower LR to learn domain-specific surveillance features
+- 🎵 **Audio-Visual Fusion** — Combine video features with audio spectrograms for multimodal prediction
+- 📈 **More data** — Scale beyond 73 source videos to improve generalisation
+- 🤖 **Optical Flow / Pose** — Add motion-based features as auxiliary inputs to the LSTM
+- 🚀 **Real-time Deployment** — Optimise with TensorRT / ONNX for live CCTV stream inference on edge hardware
+
+---
+
+## 👥 Team
+
+| Name | Role |
+|---|---|
+| Om Tayade | Model Development & Training |
+| Arnav Pande | Data Pipeline & Evaluation |
+
+*Machine Learning Course Project*
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
