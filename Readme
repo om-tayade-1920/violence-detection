@@ -2,12 +2,6 @@
 
 > A deep learning model that automatically detects violent activity from CCTV footage using a **frozen ResNet-18 CNN + LSTM** architecture for temporal video understanding. Trained and evaluated on Kaggle with 2× GPU.
 
-![Python](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python)
-![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C?logo=pytorch)
-![Platform](https://img.shields.io/badge/Platform-Kaggle-20BEFF?logo=kaggle)
-![License](https://img.shields.io/badge/License-MIT-green)
-![Status](https://img.shields.io/badge/Status-Academic%20Project-orange)
-
 ---
 
 ## 📌 Problem Statement
